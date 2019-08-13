@@ -6,6 +6,7 @@ from PhysicsTools.PatAlgos.patSequences_cff import *
 from PhysicsTools.PatAlgos.triggerLayer1.triggerProducer_cfi import *
 from PhysicsTools.PatAlgos.triggerLayer1.triggerEventProducer_cfi import *
 #from PhysicsTools.PatAlgos.triggerLayer1.triggerMatcher_cfi import * -- deprecated in 73
+from RecoEgamma.ElectronIdentification.egmGsfElectronIDs_cff import * 
 
 muonMatch = muonMatch.clone(
     src = cms.InputTag("muons"),
@@ -36,6 +37,18 @@ patJets.embedGenPartonMatch = cms.bool(False)
 patJets.addGenJetMatch      = cms.bool(False)
 patJets.embedGenJetMatch    = cms.bool(False)
 patJets.addPartonJetMatch   = cms.bool(False)
+#patJets.embedCaloTowers          = False
+#patJets.embedPFCandidates        = False
+patJets.addTagInfos              = False
+patJets.addAssociatedTracks      = False
+patJets.addJetCharge             = False
+#patJets.addJetID                 = False
+patJets.embedGenPartonMatch      = False
+patJets.embedGenJetMatch         = False
+
+## MET
+patMETs.addGenMET = cms.bool(False)
+
 
 # Tracker Muons Part
 selectedPatTrackerMuons = selectedPatMuons.clone(
@@ -162,15 +175,6 @@ patifyPFMuon = cms.Sequence(
     cleanPatPFMuonsTriggerMatch
 )
 
-patMETsData = patMETs.clone(
-    addGenMET = cms.bool(False)
-)
-
-makePatMETsData = cms.Sequence(
-    patMETCorrections *
-    patMETsData
-)
-
 patifyData = cms.Sequence(
     pfParticleSelectionForIsoSequence *
     muonPFIsolationPATSequence *
@@ -179,27 +183,35 @@ patifyData = cms.Sequence(
     patTriggerEvent * 
     patifyTrackerMuon * 
     patifyPFMuon *
-    makePatMETsData *
+    makePatMETs *
     patJetCorrections *
     patJetCharge *
+    egmGsfElectronIDSequence * 
+    pfParticleSelectionForIsoSequence *
+    pfElectronIsolationPATSequence *
+    patElectrons *
     patJets
 )
 
-patifyMC = cms.Sequence(
-    muonMatch * 
-    patifyData *
-    makePatMETs
-)
-
-patDefaultSequence = cms.Sequence()
-patCandidates = cms.Sequence()
-makePatMuons = cms.Sequence()
 makePatJets = cms.Sequence(
     patJetCorrections *
     patJetCharge *
 #    patJetPartonMatch *
 #    patJetGenJetMatch *
-#    (patJetFlavourIdLegacy + patJetFlavourId) *
     patJets
     )
-makePatJets = cms.Sequence()
+
+patifyMC = cms.Sequence(
+    electronMatch * 
+    muonMatch * 
+    patJetFlavourIdLegacy * 
+    patJetFlavourId *
+    patifyData *
+    makePatMETs
+#    makePatJets
+)
+
+patDefaultSequence = cms.Sequence()
+patCandidates = cms.Sequence()
+makePatMuons = cms.Sequence()
+#makePatJets = cms.Sequence()

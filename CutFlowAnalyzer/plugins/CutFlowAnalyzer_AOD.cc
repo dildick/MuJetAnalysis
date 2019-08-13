@@ -19,21 +19,30 @@
 #include "DataFormats/HepMCCandidate/interface/GenParticleFwd.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
 #include "DataFormats/Math/interface/LorentzVector.h"
+
 #include "DataFormats/MuonReco/interface/MuonChamberMatch.h"
 #include "DataFormats/MuonReco/interface/Muon.h"
 #include "DataFormats/MuonReco/interface/MuonSegmentMatch.h"
 #include "DataFormats/MuonReco/interface/MuonSelectors.h"
 #include "DataFormats/PatCandidates/interface/Muon.h"
+
+#include "DataFormats/PatCandidates/interface/Electron.h"
+#include "DataFormats/PatCandidates/interface/VIDCutFlowResult.h"
+
 #include "DataFormats/PatCandidates/interface/TriggerEvent.h"
+
 #include "DataFormats/TrackingRecHit/interface/TrackingRecHit.h"
 #include "DataFormats/TrackReco/interface/HitPattern.h"
 #include "DataFormats/TrackReco/interface/TrackFwd.h"
 #include "DataFormats/TrackReco/interface/Track.h"
+#include "DataFormats/VertexReco/interface/VertexFwd.h"
+#include "DataFormats/VertexReco/interface/Vertex.h"
+
 #include "DataFormats/METReco/interface/PFMETFwd.h"
 #include "DataFormats/METReco/interface/PFMET.h"
 #include "DataFormats/PatCandidates/interface/MET.h"
-#include "DataFormats/VertexReco/interface/VertexFwd.h"
-#include "DataFormats/VertexReco/interface/Vertex.h"
+
+
 #include "DataFormats/L1GlobalTrigger/interface/L1GlobalTriggerReadoutRecord.h"
 #include "DataFormats/L1GlobalTrigger/interface/L1GlobalTriggerObjectMapRecord.h"
 #include "Geometry/CommonDetUnit/interface/GlobalTrackingGeometry.h"
@@ -90,6 +99,10 @@
 //Added for Vertex Finding sanity checks
 //#include <TrackingRecHit.h>
 #include "PhysicsTools/RecoUtils/interface/CheckHitPattern.h"
+
+
+
+
 
 //******************************************************************************
 //                           Class declaration                                  
@@ -340,6 +353,10 @@ private:
   edm::EDGetTokenT<reco::VertexCollection> m_primaryVertices;
   edm::EDGetTokenT<pat::METCollection> m_patMET;
   edm::EDGetTokenT<pat::JetCollection> m_patJet;
+  edm::EDGetToken m_electron;
+  edm::EDGetTokenT<edm::ValueMap<bool> > eleIdMapToken;
+  edm::EDGetTokenT<edm::ValueMap<bool> > eleIdMapTokenM;
+
 
   Int_t         m_nThrowsConsistentVertexesCalculator;
   Int_t         m_barrelPixelLayer;
@@ -484,6 +501,20 @@ private:
   Int_t b_selMu1_NVTL;
   Int_t b_selMu2_NVTL;
   Int_t b_selMu3_NVTL;
+
+  // electron properties
+  Float_t b_selEle_dxy;
+  Float_t b_selEle_dz;
+  Float_t b_selEle_px;
+  Float_t b_selEle_py;
+  Float_t b_selEle_pz;
+  Float_t b_selEle_eta;
+  Float_t b_selEle_phi;
+  Float_t b_selEle_pT;
+  Float_t b_selEle_q;
+  Bool_t b_selEle_isMedium;
+  Bool_t b_selEle_isTight;
+
 
   // dimuon properties
   Float_t b_diMuonC_FittedVtx_m;
@@ -858,7 +889,12 @@ CutFlowAnalyzer_AOD::CutFlowAnalyzer_AOD(const edm::ParameterSet& iConfig)
   m_primaryVertices = consumes<reco::VertexCollection>(iConfig.getParameter<edm::InputTag>("primaryVertices"));
   m_patMET          = consumes<pat::METCollection>(iConfig.getParameter<edm::InputTag>("patMET"));
   m_patJet          = consumes<pat::JetCollection>(iConfig.getParameter<edm::InputTag>("patJet"));
+  m_electron        = mayConsume<edm::View<reco::GsfElectron> >(iConfig.getParameter<edm::InputTag>("electrons"));
 
+  // m_electron     = consumes<edm::View<pat::Electron> >(iConfig.getParameter<edm::InputTag>("electron"));
+  eleIdMapToken     = (consumes<edm::ValueMap<bool> >(iConfig.getParameter<edm::InputTag>("elIdFullInfoMap")));
+  eleIdMapTokenM     = (consumes<edm::ValueMap<bool> >(iConfig.getParameter<edm::InputTag>("elIdFullInfoMapM")));
+  
   m_nThrowsConsistentVertexesCalculator = iConfig.getParameter<int>("nThrowsConsistentVertexesCalculator");
   m_barrelPixelLayer = iConfig.getParameter<int>("barrelPixelLayer");
   m_endcapPixelLayer = iConfig.getParameter<int>("endcapPixelLayer");
@@ -1636,19 +1672,30 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
   iEvent.getByToken(m_patJet, patJetH);
   const std::vector<pat::Jet>& patJets = *patJetH.product(); 
 
+  edm::Handle<edm::View<reco::GsfElectron> > electrons;
+  iEvent.getByToken(m_electron, electrons);
+
+  //Get the electron ID data from the event stream.
+   edm::Handle<edm::ValueMap<bool> > ele_id_decisions;
+   iEvent.getByToken(eleIdMapToken, ele_id_decisions);
+
+   edm::Handle<edm::ValueMap<bool> > ele_id_decisionsM;
+   iEvent.getByToken(eleIdMapTokenM, ele_id_decisionsM);
+
   /*
    * https://twiki.cern.ch/twiki/bin/view/CMSPublic/BTV13TeVICHEP2016
     CSVv2: Combined Secondary Vertex version 2 algorithm, based on secondary vertex and track-based lifetime informations, it is an updated version of the CSV algorithm used in Run 1 combining the variables with a neural network instead of a likelihood ratio and the secondary vertex information is obtained with the Inclusive Vertex Finder algorithm. The operating point values for the loose, medium and tight tagging criteria are set to 0.460, 0.800, 0.935, respectively.
    */
+  b_nBJet_20 = 0;
 
   for (auto iJet = patJets.begin();  iJet != patJets.end();  ++iJet) {
     // number of tight b-jets with at least 20 GeV pT
-    if (iJet->bDiscriminator("pfCombinedInclusiveSecondaryVertexV2BJetTags")>0.935 and iJet->pt()>20) {
+    if (iJet->bDiscriminator("pfCombinedInclusiveSecondaryVertexV2BJetTags")>0.935 and iJet->pt()>20 and std::abs(iJet->eta())<2.4) {
       std::cout << "B-jet with at least 20 GeV pt" << std::endl;
       b_nBJet_20++;
     }
   }
-
+  std::cout<<"Number of jets with 20 GeV pT: " << b_nBJet_20 << std::endl;
   edm::Handle<pat::MuonCollection> muons;
   iEvent.getByToken(m_muons, muons);
   
@@ -1671,7 +1718,7 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
   }
   
   b_nRecoMu = selMuons.size();
-
+  std::cout << "Number of RECO muons "<< b_nRecoMu<< std::endl;
 
   // Cut on primary vertex in event
   if ( m_debug > 10 ) std::cout << m_events << " Cut on primary vertex" << std::endl;
@@ -1679,9 +1726,11 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
   iEvent.getByToken(m_primaryVertices, primaryVertices);
 
   b_isVertexOK = false;
-  for (reco::VertexCollection::const_iterator vertex = primaryVertices->begin();  vertex != primaryVertices->end();  ++vertex) {
-    if (vertex->isValid() && !vertex->isFake() && vertex->tracksSize() >= 4 && fabs(vertex->z()) < 24.) {
+  reco::Vertex WZVertex4L;
+  for (const auto& vertex : *primaryVertices.product()) {
+    if (vertex.isValid() && !vertex.isFake() && vertex.tracksSize() >= 4 && fabs(vertex.z()) < 24.) {
       b_isVertexOK = true;
+      WZVertex4L = vertex;
     }
   }
 
@@ -1703,6 +1752,74 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     }
   }
   
+  float maxElePt = 0;
+
+  for (size_t i=0, size=electrons->size(); i<size; ++i){   
+    const auto ele = electrons->ptrAt(i);          // easier if we use ptrs for the id
+
+    // pt selection
+    if (ele->pt()< 10) continue;
+    std::cout << "electron pt " << ele->pt() << std::endl;
+
+    std::cout << "electron eta " << ele->eta() << std::endl;
+    // eta selection
+    if (std::abs(ele->eta()) > 2.5) continue;
+    
+    // dz cut
+    reco::GsfTrackRef theTrack = ele->gsfTrack();
+    double dxy = std::abs(theTrack->dxy());
+    double dz = std::abs(theTrack->dz());
+    double eta = ele->superCluster()->eta();
+    std::cout << "electron dxy " << dxy << std::endl;
+    std::cout << "electron dz " << dz << std::endl;
+
+    bool isPassEleIdT  = (*ele_id_decisions)[ele];
+    bool isPassEleIdM  = (*ele_id_decisionsM)[ele];
+    
+    // if (!isPassEleId) continue;
+    // // dxy less than 0.01 for electrons in the barrel
+    // if (std::abs(eta)<1.479){
+    //   if (dxy > 0.01) continue;
+    //   if (dz > 0.4) continue;
+    //   // if (ele->full5x5_sigmaIetaIeta() > 0.00998) continue;
+    //   // if (dEtaInSeed(ele) > 0.00308) continue;
+    //   // if (GsfEleConversionVetoCut::GsfEleDPhiInCut::value(ele) > 0.0816) continue;
+    //   // if (GsfEleHadronicOverEMCut::value(ele)  > 0.0414) continue;
+    //   // if (GsfEleEffAreaPFIsoCut::GsfEleEInverseMinusPInverseCut::value(ele)>0.0129) continue;
+    // }
+    // if (std::abs(eta)>1.479){
+    //   if (dxy > 0.07) continue;
+    //   if (dz > 0.6) continue;
+    //   // if (ele->full5x5_sigmaIetaIeta() > 0.0292) continue;
+    //   // if (dEtaInSeed(ele) > 0.00605) continue;
+    //   // if (GsfEleConversionVetoCut::GsfEleDPhiInCut::value(ele) > 0.0394) continue;
+    //   // if (GsfEleHadronicOverEMCut::value(ele)  > 0.0641) continue;
+    //   // if (GsfEleEffAreaPFIsoCut::GsfEleEInverseMinusPInverseCut::value(ele)>0.0129) continue;
+    // }
+
+    // std::cout << "electron passes dxy and dz cuts" << std::endl;
+      
+      
+    // now store the highest pT electron satisfying all selelections
+    if (ele->pt() > maxElePt) {
+      maxElePt = ele->pt();
+      std::cout << "electron passes " << std::endl;
+
+      b_selEle_isTight = int(isPassEleIdT);
+      b_selEle_isMedium = int(isPassEleIdM);
+      b_selEle_pT= ele->pt();
+      b_selEle_px = ele->px();
+      b_selEle_py = ele->py();
+      b_selEle_dxy = dxy;
+      b_selEle_dz = dz;
+      b_selEle_pz = ele->pz();
+      b_selEle_eta = ele->eta();
+      b_selEle_phi = ele->phi();
+      b_selEle_q = ele->charge();
+    }    
+  }
+
+
   if ( selMuons.size() > 0 ) {
     b_selMu0_px  = selMuons[0]->px();
     b_selMu0_py  = selMuons[0]->py();
@@ -1716,11 +1833,11 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     b_selMu0_NVPH = selMuons[0]->innerTrack()->hitPattern().numberOfValidPixelHits();
     b_selMu0_NVTL = selMuons[0]->innerTrack()->hitPattern().trackerLayersWithMeasurement(); 
     // these variables only make sense if you consider WZ events
-    b_selMu0_isTight = muon::isTightMuon(*selMuons[0], WZVertex);
+    b_selMu0_isTight = muon::isTightMuon(*selMuons[0], WZVertex4L);
     if (!selMuons[0]->globalTrack().isNull())
       b_selMu0_GlobalTrackChi2 = selMuons[0]->globalTrack()->normalizedChi2();
-    b_selMu0_dxy = selMuons[0]->muonBestTrack()->dxy(WZVertex.position());
-    b_selMu0_dz = selMuons[0]->muonBestTrack()->dz(WZVertex.position());
+    b_selMu0_dxy = selMuons[0]->muonBestTrack()->dxy(WZVertex4L.position());
+    b_selMu0_dz = selMuons[0]->muonBestTrack()->dz(WZVertex4L.position());
     b_selMu0_PFIso = recoMuonPFIso(selMuons[0]);
  } else {
     b_selMu0_px  = -100.0;
@@ -1754,11 +1871,11 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     b_selMu1_NVPH = selMuons[1]->innerTrack()->hitPattern().numberOfValidPixelHits();
     b_selMu1_NVTL = selMuons[1]->innerTrack()->hitPattern().trackerLayersWithMeasurement(); 
     // these variables only make sense if you consider WZ events
-    b_selMu1_isTight = muon::isTightMuon(*selMuons[1], WZVertex);
+    b_selMu1_isTight = muon::isTightMuon(*selMuons[1], WZVertex4L);
     if (!selMuons[1]->globalTrack().isNull())
       b_selMu1_GlobalTrackChi2 = selMuons[1]->globalTrack()->normalizedChi2();
-    b_selMu1_dxy = selMuons[1]->muonBestTrack()->dxy(WZVertex.position());
-    b_selMu1_dz = selMuons[1]->muonBestTrack()->dz(WZVertex.position());
+    b_selMu1_dxy = selMuons[1]->muonBestTrack()->dxy(WZVertex4L.position());
+    b_selMu1_dz = selMuons[1]->muonBestTrack()->dz(WZVertex4L.position());
     b_selMu1_PFIso = recoMuonPFIso(selMuons[1]);
   } else {
     b_selMu1_px  = -100.0;
@@ -1792,11 +1909,11 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     b_selMu2_NVPH = selMuons[2]->innerTrack()->hitPattern().numberOfValidPixelHits();
     b_selMu2_NVTL = selMuons[2]->innerTrack()->hitPattern().trackerLayersWithMeasurement(); 
     // these variables only make sense if you consider WZ events
-    b_selMu2_isTight = muon::isTightMuon(*selMuons[2], WZVertex);
+    b_selMu2_isTight = muon::isTightMuon(*selMuons[2], WZVertex4L);
     if (!selMuons[2]->globalTrack().isNull())
       b_selMu2_GlobalTrackChi2 = selMuons[2]->globalTrack()->normalizedChi2();
-    b_selMu2_dxy = selMuons[2]->muonBestTrack()->dxy(WZVertex.position());
-    b_selMu2_dz = selMuons[2]->muonBestTrack()->dz(WZVertex.position());
+    b_selMu2_dxy = selMuons[2]->muonBestTrack()->dxy(WZVertex4L.position());
+    b_selMu2_dz = selMuons[2]->muonBestTrack()->dz(WZVertex4L.position());
     b_selMu2_PFIso = recoMuonPFIso(selMuons[2]);
   } else {
     b_selMu2_px  = -100.0;
@@ -1830,11 +1947,11 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     b_selMu3_NVPH = selMuons[3]->innerTrack()->hitPattern().numberOfValidPixelHits();
     b_selMu3_NVTL = selMuons[3]->innerTrack()->hitPattern().trackerLayersWithMeasurement(); 
     // these variables only make sense if you consider WZ events
-    b_selMu3_isTight = muon::isTightMuon(*selMuons[3], WZVertex);
+    b_selMu3_isTight = muon::isTightMuon(*selMuons[3], WZVertex4L);
     if (!selMuons[3]->globalTrack().isNull())
       b_selMu3_GlobalTrackChi2 = selMuons[3]->globalTrack()->normalizedChi2();
-    b_selMu3_dxy = selMuons[3]->muonBestTrack()->dxy(WZVertex.position());
-    b_selMu3_dz = selMuons[3]->muonBestTrack()->dz(WZVertex.position());
+    b_selMu3_dxy = selMuons[3]->muonBestTrack()->dxy(WZVertex4L.position());
+    b_selMu3_dz = selMuons[3]->muonBestTrack()->dz(WZVertex4L.position());
     b_selMu3_PFIso = recoMuonPFIso(selMuons[3]);
   } else {
     b_selMu3_px  = -100.0;
@@ -1856,7 +1973,7 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     b_selMu3_PFIso = -999;
   }
 
-  if ( m_debug > 10 ) std::cout << m_events << " Count selected RECO muons" << std::endl;
+  if ( m_debug > 10 ) std::cout << m_events << " Count selected RECO muons" << selMuons.size() << std::endl;
 
   b_is1SelMu17 = false;
   b_is2SelMu8  = false;
@@ -1878,6 +1995,9 @@ CutFlowAnalyzer_AOD::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
       b_is4SelMu8 = true;
     }
   }
+
+  if ( m_debug > 10 ) std::cout << "is1SelMu17-8-8-8 " << b_is1SelMu17 << b_is2SelMu8<< b_is3SelMu8<< b_is4SelMu8<<std::endl;
+  std::cout << "Pts " << b_selMu0_pT << " " << b_selMu1_pT << " " << b_selMu2_pT << " " << b_selMu3_pT << std::endl;
 
   if ( m_debug > 10 ) std::cout << m_events << " Build RECO muon jets" << std::endl;
 
@@ -3377,6 +3497,16 @@ CutFlowAnalyzer_AOD::beginJob() {
   m_ttree->Branch("selMu2_isTight", &b_selMu2_isTight, "selMu2_isTight/O");
   m_ttree->Branch("selMu3_isTight", &b_selMu3_isTight, "selMu3_isTight/O");
 
+  m_ttree->Branch("selEle_px",&b_selEle_px,"selEle_px/F");
+  m_ttree->Branch("selEle_py",&b_selEle_py,"selEle_py/F");
+  m_ttree->Branch("selEle_pz",&b_selEle_pz,"selEle_pz/F");
+  m_ttree->Branch("selEle_eta",&b_selEle_eta,"selEle_eta/F");
+  m_ttree->Branch("selEle_phi",&b_selEle_phi,"selEle_phi/F");
+  m_ttree->Branch("selEle_pT",&b_selEle_pT,"selEle_pT/F");
+  m_ttree->Branch("selEle_q",&b_selEle_q,"selEle_q/F");
+  m_ttree->Branch("selEle_isMedium",&b_selEle_isMedium,"selEle_isMedium/O");
+  m_ttree->Branch("selEle_isTight",&b_selEle_isTight,"selEle_isTight/O");
+
   m_ttree->Branch("selMu0_NVMH", &b_selMu0_NVMH, "selMu0_NVMH/I");
   m_ttree->Branch("selMu1_NVMH", &b_selMu1_NVMH, "selMu1_NVMH/I");
   m_ttree->Branch("selMu2_NVMH", &b_selMu2_NVMH, "selMu2_NVMH/I");
@@ -3742,6 +3872,8 @@ CutFlowAnalyzer_AOD::endJob()
   std::cout << "END JOB" << std::endl;
 
   std:: cout << "Total number of events:          " << m_events << std::endl;
+
+  if (m_events==0) return;
   std:: cout << "Total number of events with 4mu: " << m_events4GenMu << " fraction: " <<  m_events4GenMu/m_events << std::endl;
 
   // only fill GEN level event information when you run on Monte Carlo

@@ -1,7 +1,22 @@
 import FWCore.ParameterSet.Config as cms
 
+year=2016
+
+vid_el_loose  = ''
+vid_el_medium = ''
+vid_el_tight  = ''
+if year==2016:
+    vid_el_loose  = "egmGsfElectronIDs:cutBasedElectronID-Summer16-80X-V1-loose"
+    vid_el_medium = "egmGsfElectronIDs:cutBasedElectronID-Summer16-80X-V1-medium"
+    vid_el_tight  = "egmGsfElectronIDs:cutBasedElectronID-Summer16-80X-V1-tight"
+elif year==2017:
+    vid_el_loose  = "egmGsfElectronIDs:cutBasedElectronID-Fall17-94X-V1-loose"
+    vid_el_medium = "egmGsfElectronIDs:cutBasedElectronID-Fall17-94X-V1-medium"
+    vid_el_tight  = "egmGsfElectronIDs:cutBasedElectronID-Fall17-94X-V1-tight"
+
+
 cutFlowAnalyzer = cms.EDAnalyzer('CutFlowAnalyzer_AOD',
-    analyzerDebug = cms.int32(0),
+    analyzerDebug = cms.int32(100),
 #    muons = cms.InputTag("cleanPatTrackerMuonsTriggerMatch"),
 #    muJets = cms.InputTag("TrackerMuJetProducer05"),
     muons = cms.InputTag("cleanPatPFMuonsTriggerMatch"),
@@ -14,7 +29,8 @@ cutFlowAnalyzer = cms.EDAnalyzer('CutFlowAnalyzer_AOD',
     TrackRefitter = cms.InputTag("TrackRefitter"),
     genParticles = cms.InputTag("genParticles"),
     primaryVertices = cms.InputTag("offlinePrimaryVertices"),
-    patJet = cms.InputTag("patJets"),
+    electrons = cms.InputTag("gedGsfElectrons"),
+    patJet = cms.InputTag("patJets"),##
     patMET = cms.InputTag("patMETs"),
     DiMuons_Iso_Max = cms.double(2.0),
     nThrowsConsistentVertexesCalculator = cms.int32(0),
@@ -28,6 +44,10 @@ cutFlowAnalyzer = cms.EDAnalyzer('CutFlowAnalyzer_AOD',
     MeasurementTrackerEvent = cms.InputTag('MeasurementTrackerEvent'),
     Propagator = cms.string("RungeKuttaTrackerPropagator"),
     runBBestimation = cms.bool(False),
+    #elIdFullInfoMap  = cms.InputTag(vid_el_loose),
+    elIdFullInfoMapM = cms.InputTag(vid_el_medium),
+    elIdFullInfoMap = cms.InputTag(vid_el_tight),
+    #elIdFullInfoMap = cms.InputTag(vid_el_tight),
     skimOutput = cms.bool(False),
     signalHltPaths = cms.vstring(
         'HLT_TrkMu15_DoubleTrkMu5NoFiltersNoVtx_v1',

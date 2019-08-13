@@ -12,6 +12,9 @@ def customizePatOutput(process):
         "keep *_muonTriggerMatch*_*_*",
         "keep *_cleanPatTrackerMuonsTriggerMatch_*_*",
         "keep *_cleanPatPFMuonsTriggerMatch_*_*",
+        
+        "keep *_*gedGsfElectrons*_*_*",
+        "keep *_*egmGsfElectronIDs*_*_*",
 
         "keep *_PFMuJetProducer05_*_*",
         "keep *_TrackerMuJetProducer05_*_*",
@@ -47,6 +50,7 @@ def customizePatOutput(process):
         "keep *_genMetCaloAndNonPrompt_*_*",
         "keep *_genMetTrue_*_*",
         "keep *_met_*_*",
+        "keep *_*Met_*_*",
         "keep *_metHO_*_*",
         "keep *_metNoHF_*_*",
         "keep *_metNoHFHO_*_*",
@@ -55,7 +59,7 @@ def customizePatOutput(process):
         "keep *_metOptNoHF_*_*",
         "keep *_metOptNoHFHO_*_*",
         "keep *_tcMet_*_*",
-        "keep *_pfMet_*_*",
+        "keep *_*Met_*_*",
 
         "keep *_ak5GenJets_*_*",
         "keep *_ak5CaloJets_*_*",
@@ -66,5 +70,5 @@ def customizePatOutput(process):
         "keep *_ak7PFJets_*_*",
         "keep *_ak7TrackJets_*_*",
     )
-    process.out.fileName = cms.untracked.string("out_pat.root")
+    #process.out.fileName = cms.untracked.string("out_pat.root")
     return process
